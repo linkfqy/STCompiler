@@ -14,6 +14,7 @@ import cn.edu.hitsz.compiler.utils.FilePathConfig;
 import cn.edu.hitsz.compiler.utils.FileUtils;
 import cn.edu.hitsz.compiler.utils.IREmulator;
 
+import java.io.IOException;
 import java.util.Objects;
 
 public class Main {
@@ -24,8 +25,13 @@ public class Main {
 
         // 词法分析
         final var lexer = new LexicalAnalyzer(symbolTable);
-        lexer.loadFile(FilePathConfig.SRC_CODE_PATH);
-        lexer.run();
+        try {
+            lexer.loadFile(FilePathConfig.SRC_CODE_PATH);
+            lexer.run();
+        }catch (IOException e){
+            System.out.println("File Load Error When Lexical Analysis");
+            return;
+        }
         lexer.dumpTokens(FilePathConfig.TOKEN_PATH);
         final var tokens = lexer.getTokens();
         symbolTable.dumpTable(FilePathConfig.OLD_SYMBOL_TABLE);
