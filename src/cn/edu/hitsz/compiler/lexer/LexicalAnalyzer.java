@@ -17,8 +17,8 @@ import java.util.stream.StreamSupport;
  * @see TokenKind 词法单元类型的实现
  */
 public class LexicalAnalyzer {
-    private SymbolTable symbolTable;
-    private List<Token> tokens;
+    private final SymbolTable symbolTable;
+    private final List<Token> tokens;
     private BufferedReader reader;
 
     public LexicalAnalyzer(SymbolTable symbolTable) {
@@ -113,7 +113,8 @@ public class LexicalAnalyzer {
                     tokens.add(Token.normal("IntConst", tokenStr.toString()));
                     reader.reset();
                 }
-                case 14,15,16,17,18,19,20,21,22 -> tokens.add(Token.normal(""+c,""));
+                case 16 -> tokens.add(Token.normal("Semicolon",""));
+                case 14,15,17,18,19,20,21,22 -> tokens.add(Token.normal(""+c,""));
                 // 非终止状态正常跳转
                 default -> state=nextState;
             }
