@@ -3,10 +3,7 @@ package cn.edu.hitsz.compiler.symtab;
 import cn.edu.hitsz.compiler.NotImplementedException;
 import cn.edu.hitsz.compiler.utils.FileUtils;
 
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 
 /**
  * 符号表
@@ -60,6 +57,15 @@ public class SymbolTable {
      */
     public boolean has(String text) {
         return map.containsKey(text);
+    }
+
+    /**
+     * 提供符号表中所有符号名
+     *
+     * @return 符号表中所有符号名
+     */
+    public Set<String> getAllNames() {
+        return map.keySet();
     }
 
     /**

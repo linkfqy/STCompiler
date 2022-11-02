@@ -55,14 +55,13 @@ public class Main {
         final var productionCollector = new ProductionCollector(GrammarInfo.getBeginProduction());
         parser.registerObserver(productionCollector);
 
-        // TODO 实验二暂时用不到，为避免程序终止注释掉，后续实验加回来
         // 加入用作语义检查的 Observer
         final var semanticAnalyzer = new SemanticAnalyzer();
-//        parser.registerObserver(semanticAnalyzer);
+        parser.registerObserver(semanticAnalyzer);
 
         // 加入用作 IR 生成的 Observer
         final var irGenerator = new IRGenerator();
-//        parser.registerObserver(irGenerator);
+        parser.registerObserver(irGenerator);
 
         // 执行语法解析并在解析过程中依次调用各 Observer
         parser.run();

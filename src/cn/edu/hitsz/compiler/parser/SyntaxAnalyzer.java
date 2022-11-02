@@ -9,7 +9,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Stack;
 
-//TODO: 实验二: 实现 LR 语法分析驱动程序
 
 /**
  * LR 语法分析驱动程序
@@ -84,11 +83,6 @@ public class SyntaxAnalyzer {
     }
 
     public void run() {
-        // TODO: 实现驱动程序
-        // 你需要根据上面的输入来实现 LR 语法分析的驱动程序
-        // 请分别在遇到 Shift, Reduce, Accept 的时候调用上面的 callWhenInShift, callWhenInReduce, callWhenInAccept
-        // 否则用于为实验二打分的产生式输出可能不会正常工作
-//        throw new NotImplementedException();
         Stack<Status> stk_status = new Stack<>();
         stk_status.add(table.getInit());
         Stack<Term> stk_term = new Stack<>();
