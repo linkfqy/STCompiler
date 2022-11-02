@@ -1,9 +1,17 @@
 package cn.edu.hitsz.compiler.asm;
 
-import cn.edu.hitsz.compiler.NotImplementedException;
+import cn.edu.hitsz.compiler.RegisterNotEnoughException;
+import cn.edu.hitsz.compiler.ir.IRImmediate;
+import cn.edu.hitsz.compiler.ir.IRValue;
+import cn.edu.hitsz.compiler.ir.IRVariable;
 import cn.edu.hitsz.compiler.ir.Instruction;
+import cn.edu.hitsz.compiler.utils.BMap;
+import cn.edu.hitsz.compiler.utils.FileUtils;
 
+import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 
 
 /**
@@ -21,6 +29,94 @@ import java.util.List;
  * @see AssemblyGenerator#run() 代码生成与寄存器分配
  */
 public class AssemblyGenerator {
+    enum Reg {
+        a0,t0,t1,t2,t3,t4,t5,t6
+    }
+    private List<Instruction> originIRs,IRs;
+    private BMap<IRVariable,Reg> bMap;
+    private Map<IRVariable,Integer> lastPos;
+    private List<String> asm;
+
+    private void preProcess(){
+        IRs = new LinkedList<>();
+        for (var ir : originIRs){
+            switch (ir.getKind()){
+                case RET -> {
+                    IRs.add(ir);
+                    return;
+                }
+                case ADD -> {
+                    boolean lImm = ir.getLHS().isImmediate();
+                    boolean rImm = ir.getRHS().isImmediate();
+                    if (lImm && rImm){
+                        IRs.add(Instruction.createMov(
+                                ir.getResult(),
+                                IRImmediate.of(
+                                        ((IRImmediate) ir.getLHS()).getValue()
+                                       +((IRImmediate) ir.getRHS()).getValue()
+                                )
+                        ));
+                    }else if (lImm && !rImm){  // a = imm + b
+                        IRs.add(Instruction.createAdd(
+                                ir.getResult(),
+                                ir.getRHS(),
+                                ir.getLHS()
+                        ));
+                    }else IRs.add(ir);
+                }
+                case SUB -> {
+                    boolean lImm = ir.getLHS().isImmediate();
+                    boolean rImm = ir.getRHS().isImmediate();
+                    if (lImm && rImm){
+                        IRs.add(Instruction.createMov(
+                                ir.getResult(),
+                                IRImmediate.of(
+                                        ((IRImmediate) ir.getLHS()).getValue()
+                                       -((IRImmediate) ir.getRHS()).getValue()
+                                )
+                        ));
+                    }else if (lImm && !rImm){  // a = imm - b
+                        var temp = IRVariable.temp();
+                        IRs.add(Instruction.createMov(temp,ir.getLHS()));
+                        IRs.add(Instruction.createSub(
+                                ir.getResult(),
+                                temp,
+                                ir.getRHS()
+                        ));
+                    }else IRs.add(ir);
+                }
+                case MUL -> {
+                    boolean lImm = ir.getLHS().isImmediate();
+                    boolean rImm = ir.getRHS().isImmediate();
+                    if (lImm && rImm){
+                        IRs.add(Instruction.createMov(
+                                ir.getResult(),
+                                IRImmediate.of(
+                                        ((IRImmediate) ir.getLHS()).getValue()
+                                       *((IRImmediate) ir.getRHS()).getValue()
+                                )
+                        ));
+                    }else if (lImm ^ rImm){  // a = imm * b; a = b * imm;
+                        var temp = IRVariable.temp();
+                        var imm = ir.getLHS();
+                        var b = ir.getRHS();
+                        if (b instanceof IRImmediate){
+                            var tt=imm;
+                            imm=b;
+                            b=tt;
+                        }
+                        IRs.add(Instruction.createMov(temp,imm));
+                        IRs.add(Instruction.createMul(
+                                ir.getResult(),
+                                temp,
+                                b
+                        ));
+                    }else IRs.add(ir);
+                }
+                case MOV -> IRs.add(ir);
+            }
+        }
+    }
 
     /**
      * 加载前端提供的中间代码
@@ -31,8 +127,33 @@ public class AssemblyGenerator {
      * @param originInstructions 前端提供的中间代码
      */
     public void loadIR(List<Instruction> originInstructions) {
-        // TODO: 读入前端提供的中间代码并生成所需要的信息
-        throw new NotImplementedException();
+        originIRs=originInstructions;
+        bMap = new BMap<>();
+        lastPos = new HashMap<>();
+        preProcess();
+        // 统计每个IR变量最后出现的位置
+        int index=0;
+        for (var ir : IRs){
+            index++;
+            switch (ir.getKind()){
+                case MOV -> {
+                    lastPos.put(ir.getResult(),index);
+                    if (ir.getFrom() instanceof IRVariable from)
+                        lastPos.put(from,index);
+                }
+                case RET -> {
+                    if (ir.getReturnValue() instanceof IRVariable returnValue)
+                        lastPos.put(returnValue,index);
+                }
+                case ADD,SUB,MUL -> {
+                    lastPos.put(ir.getResult(),index);
+                    if (ir.getLHS() instanceof IRVariable lhs)
+                        lastPos.put(lhs,index);
+                    if (ir.getRHS() instanceof IRVariable rhs)
+                        lastPos.put(rhs,index);
+                }
+            }
+        }
     }
 
 
@@ -46,10 +167,97 @@ public class AssemblyGenerator {
      * 成前完成建立, 与代码生成的过程相关的信息可自行设计数据结构进行记录并动态维护.
      */
     public void run() {
-        // TODO: 执行寄存器分配与代码生成
-        throw new NotImplementedException();
+        bMap = new BMap<>();
+        asm = new LinkedList<>();
+        int index=0;
+        for (var ir : IRs){
+            index++;
+            switch (ir.getKind()){
+                // RET a 等价于 MOV a0, a
+                case RET -> createMOV(Reg.a0,ir.getReturnValue(),index);
+                case MOV -> createMOV(getReg(ir.getResult(),index),ir.getFrom(),index);
+                case ADD -> createBinaryOp(
+                        "add",
+                        ir.getResult(),
+                        (IRVariable) ir.getLHS(),
+                        ir.getRHS(),
+                        index
+                );
+                case SUB -> createBinaryOp(
+                        "sub",
+                        ir.getResult(),
+                        (IRVariable) ir.getLHS(),
+                        ir.getRHS(),
+                        index
+                );
+                case MUL -> createBinaryOp(
+                        "mul",
+                        ir.getResult(),
+                        (IRVariable) ir.getLHS(),
+                        ir.getRHS(),
+                        index
+                );
+            }
+        }
     }
 
+    private void createMOV(Reg res, IRValue from, int index){
+        if (from instanceof IRVariable vFrom){
+            asm.add(String.format("mv %s, %s", res, getReg(vFrom,index)));
+        }else{  // MOV res imm
+            asm.add(String.format("li %s, %d", res, ((IRImmediate)from).getValue()));
+        }
+    }
+
+    private void createBinaryOp(String op, IRVariable res, IRVariable lhs, IRValue rhs, int index){
+        if (rhs.isIRVariable()){
+            asm.add(String.format("%s %s, %s, %s",op,
+                    getReg(res,index),
+                    getReg(lhs,index),
+                    getReg((IRVariable) rhs,index))
+            );
+        }else{
+            asm.add(String.format("%s %s, %s, %d",op+"i",
+                    getReg(res,index),
+                    getReg(lhs,index),
+                    ((IRImmediate)rhs).getValue()
+            ));
+        }
+    }
+
+    /**
+     * 由IR变量获得寄存器
+     * <br>
+     * 若已分配寄存器，直接返回
+     * <br>
+     * 否则寻找未被分配的寄存器
+     * <br>
+     * 再找不到，从用不到的变量腾出寄存器
+     * @param variable 待获取寄存器的IR变量
+     * @param index 当前生成的汇编行号
+     * @return 找到的寄存器
+     */
+    private Reg getReg(IRVariable variable, int index) {
+        // 已经分配了寄存器
+        if (bMap.containKey(variable)) return bMap.getByKey(variable);
+        // 寻找未分配的寄存器
+        for (var reg : Reg.values()){
+            if (reg!=Reg.a0 && !bMap.containValue(reg)) {
+                bMap.replace(variable,reg);
+                return reg;
+            }
+        }
+        // 寻找用不到的变量
+        for (var var_ : bMap.getAllKeys()){
+            if (lastPos.get(var_) < index){
+                // 变量var_再也用不到了，腾出寄存器
+                Reg reg = bMap.getByKey(var_);
+                bMap.replace(variable, reg);
+                return reg;
+            }
+        }
+        throw new RegisterNotEnoughException();
+    }
 
     /**
      * 输出汇编代码到文件
@@ -57,8 +265,7 @@ public class AssemblyGenerator {
      * @param path 输出文件路径
      */
     public void dump(String path) {
-        // TODO: 输出汇编代码到文件
-        throw new NotImplementedException();
+        FileUtils.writeLines(path,asm);
     }
 }
 
